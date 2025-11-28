@@ -61,4 +61,9 @@
   "browserslist": [
     "last 5 version"
   ]
+  ,
+  "engines": {
+    "node": "18.x",
+    "npm": "9.x"
+  }
 }
