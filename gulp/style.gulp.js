@@ -1,6 +1,7 @@
 const gulp = require('gulp');
 const rename = require('gulp-rename');
-const sass = require('gulp-sass');
+const dartSass = require('sass');
+const gulpSass = require('gulp-sass')(dartSass);
 const rtlcss = require('gulp-rtlcss');
 const autoprefixer = require('gulp-autoprefixer');
 const sourcemaps = require('gulp-sourcemaps');
@@ -23,12 +24,12 @@ gulp.task('style', () => {
 
   const expandedStream = sourcemapsStream
     .pipe(clone())
-    .pipe(sass(getOption('expanded')).on('error', sass.logError))
+    .pipe(gulpSass(getOption('expanded')).on('error', gulpSass.logError))
     .pipe(autoprefixer({ cascade: false }));
 
   const compressedStream = sourcemapsStream
     .pipe(clone())
-    .pipe(sass(getOption('compressed')).on('error', sass.logError))
+    .pipe(gulpSass(getOption('compressed')).on('error', gulpSass.logError))
     .pipe(autoprefixer({ cascade: false }));
 
   const ltrCompressedStream = compressedStream
