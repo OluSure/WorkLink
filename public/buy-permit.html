@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Terms of Use - WorkLink</title>
+    <title>About Us - WorkLink</title>
     <link href="assets/css/theme.css" rel="stylesheet" />
   </head>
   <body>
-     <!-- ===============================================-->
+       <!-- ===============================================-->
     <!--    Main Content-->
     <!-- ===============================================-->
     <main class="main" id="top">
@@ -74,13 +74,75 @@
           </div>
         </div>
       </nav>
-    <main class="container" style="padding-top: 120px">
-      <h2>Terms of Use</h2>
+
+    <main class="container" style="padding-top: 120px; max-width: 800px">
+      <h2>Buy Permit</h2>
       <p>
-        By using WorkLink you agree to our demo terms. These terms apply to
-        all services provided by WorkLink.
+        Permits allow you to submit applications. Each user has 1 free permit by
+        default. After you use the free permit you'll need to purchase permits
+        to continue applying.
+      </p>
+      <div id="permitStatus"></div>
+      <div class="mt-3">
+        <p><strong>Price:</strong> ₦100 per permit</p>
+        <div class="input-group mb-3" style="max-width: 220px">
+          <input
+            id="permitCount"
+            type="number"
+            class="form-control"
+            value="1"
+            min="1"
+          />
+          <button id="buyBtn" class="btn btn-primary">Buy</button>
+        </div>
+        <p><a href="find.html">Back to Find Tasks</a></p>
+      </div>
     </main>
-      <section class="mt-7 py-0 bg-primary-gradient">
+
+    <script src="vendors/@popperjs/popper.min.js"></script>
+    <script src="vendors/bootstrap/bootstrap.min.js"></script>
+    <script src="vendors/is/is.min.js"></script>
+    <script src="assets/js/theme.js"></script>
+    <script src="assets/js/tasks.js"></script>
+    <script>
+      (function () {
+        const curFn = window.LH.currentUser;
+        const cur = curFn ? curFn() : null;
+        const statusEl = document.getElementById("permitStatus");
+        if (!cur) {
+          statusEl.innerHTML =
+            '<p>Please sign in to buy permits. <a href="index.html">Sign in</a></p>';
+          document.getElementById("buyBtn").disabled = true;
+          return;
+        }
+        const user = window.LH.findUserByUsername(cur.username) || {};
+        const freeUsed = user.freePermitUsed ? "Yes" : "No";
+        const purchased = user.permits || 0;
+        statusEl.innerHTML =
+          "<p>Signed in as <strong>" +
+          cur.username +
+          "</strong></p><p>Free permit used: <strong>" +
+          freeUsed +
+          "</strong></p><p>Purchased permits: <strong>" +
+          purchased +
+          "</strong></p>";
+        document
+          .getElementById("buyBtn")
+          .addEventListener("click", function () {
+            const count =
+              Number(document.getElementById("permitCount").value) || 1;
+            window.LH.purchasePermit(cur.username, count);
+            window.LH.showInfo(
+              "Purchased",
+              "You purchased " + count + " permit(s) for ₦" + 100 * count
+            ).then(function () {
+              window.location = "find.html";
+            });
+          });
+      })();
+    </script>
+
+        <section class="mt-7 py-0 bg-primary-gradient">
         <div class="bg-holder" style="background-image:url(assets/img/illustrations/footer-bg.png);background-position:center;background-size:cover;">
         </div>
         <!--/.bg-holder-->

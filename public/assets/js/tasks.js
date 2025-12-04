@@ -131,6 +131,63 @@
 		payments.push(p); savePayments(payments); return p;
 	}
 
+	// User updates and permit system (demo)
+	function updateUser(updated) {
+		const users = allUsers();
+		const idx = users.findIndex(u => u.username === updated.username);
+		if (idx === -1) return null;
+		users[idx] = Object.assign({}, users[idx], updated);
+		saveUsers(users);
+		return users[idx];
+	}
+
+	function purchasePermit(username, count) {
+		count = Number(count) || 1;
+		const users = allUsers();
+		const idx = users.findIndex(u => u.username === username);
+		if (idx === -1) return null;
+		users[idx].permits = (users[idx].permits || 0) + count;
+		saveUsers(users);
+		// record a mock payment (to: platform)
+		createPayment(null, username, 'platform', 100 * count);
+		return users[idx];
+	}
+
+	function hasPermit(username) {
+		const u = findUserByUsername(username);
+		if (!u) return false;
+		if (!u.freePermitUsed) return true;
+		if ((u.permits || 0) > 0) return true;
+		return false;
+	}
+
+	function consumePermit(username) {
+		const users = allUsers();
+		const idx = users.findIndex(u => u.username === username);
+		if (idx === -1) return false;
+		if (!users[idx].freePermitUsed) {
+			users[idx].freePermitUsed = true;
+			saveUsers(users);
+			return true;
+		}
+		if ((users[idx].permits || 0) > 0) {
+			users[idx].permits = (users[idx].permits || 0) - 1;
+			saveUsers(users);
+			return true;
+		}
+		return false;
+	}
+
+	function applyToTask(app) {
+		if (!app || !app.applicant) return {ok:false, message:'Invalid application'};
+		if (!hasPermit(app.applicant)) return {ok:false, message:'No permit available', code:'no_permit'};
+		// consume permit and add application
+		const consumed = consumePermit(app.applicant);
+		if (!consumed) return {ok:false, message:'Unable to consume permit'};
+		const created = addApplication(app);
+		return {ok:true, app: created};
+	}
+
 	// Utilities
 	function escapeHtml(s) { if (!s && s !== 0) return ''; return String(s).replace(/[&<>"']/g, function (m) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]; }); }
 
@@ -371,6 +428,11 @@
 		createPayment: createPayment,
 		allPayments: allPayments,
 		updateTask: updateTask,
+		updateUser: updateUser,
+		purchasePermit: purchasePermit,
+		hasPermit: hasPermit,
+		consumePermit: consumePermit,
+		applyToTask: applyToTask,
 		showInfo: showInfo,
 		showConfirm: showConfirm
 	};

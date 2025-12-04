@@ -345,12 +345,29 @@
             .addEventListener("submit", function (e) {
               e.preventDefault();
               const msg = document.getElementById("applyMessage").value;
-              window.LH.addApplication({
+              const res = window.LH.applyToTask({
                 taskId: t.id,
                 applicant: user2.username,
                 message: msg,
                 status: "pending",
               });
+              if (!res.ok) {
+                if (res.code === "no_permit") {
+                  window.LH.showConfirm(
+                    "You have used your free permit and have no purchased permits. Buy a permit for ₦100 now?",
+                    function () {
+                      // go to buy page
+                      window.location = "buy-permit.html";
+                    }
+                  );
+                } else {
+                  window.LH.showInfo(
+                    "Application error",
+                    res.message || "Unable to apply"
+                  );
+                }
+                return;
+              }
               window.LH.showInfo(
                 "Application sent",
                 "Your application was sent"
