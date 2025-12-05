@@ -30,22 +30,54 @@
 	function findUserByUsername(username) { return allUsers().find(x => x.username === username); }
 
 	async function createUser(username, password, displayName, email) {
-		if (!username || !password) return {ok:false, message:'Username and password required'};
-		if (findUserByUsername(username)) return {ok:false, message:'Username already taken'};
-		const hash = await hashPassword(password);
-		const user = {username: username, passwordHash: hash, name: displayName, email: email || username, bio: '', avatar: ''};
-		const u = allUsers(); u.push(user); saveUsers(u);
-		return {ok:true, user};
+			if (!username || !password) return {ok:false, message:'Username and password required'};
+
+			// Prefer Firestore when available for cross-browser persistence
+			if (window.__FB_READY__ && window.FB && window.FB.available) {
+				// check existing user in Firestore
+				const existing = await window.FB.queryEqual('lh_users', 'username', username);
+				if (existing && existing.length > 0) return {ok:false, message:'Username already taken'};
+				const hash = await hashPassword(password);
+				const user = {username: username, passwordHash: hash, name: displayName || username, email: email || username, bio: '', avatar: ''};
+				const added = await window.FB.add('lh_users', user);
+				// mirror locally for offline friendliness
+				try { const lu = allUsers(); lu.push(user); saveUsers(lu); } catch(e){}
+				return {ok:true, user: user};
+			}
+
+			// fallback: localStorage-only
+			if (findUserByUsername(username)) return {ok:false, message:'Username already taken'};
+			const hash = await hashPassword(password);
+			const user = {username: username, passwordHash: hash, name: displayName, email: email || username, bio: '', avatar: ''};
+			const u = allUsers(); u.push(user); saveUsers(u);
+			return {ok:true, user};
 	}
 
 	async function signInUser(username, password) {
-		const user = findUserByUsername(username);
-		if (!user) return {ok:false, message:'No such user'};
-		const hash = await hashPassword(password);
-		if (hash !== user.passwordHash) return {ok:false, message:'Invalid credentials'};
-		write('lh_currentUser', {username: user.username, name: user.name});
-		updateSigninButtons();
-		return {ok:true, user};
+			// If Firestore available, try to authenticate against server copy
+			if (window.__FB_READY__ && window.FB && window.FB.available) {
+				const users = await window.FB.queryEqual('lh_users', 'username', username);
+				const user = (users && users.length>0) ? users[0] : null;
+				if (!user) return {ok:false, message:'No such user'};
+				const hash = await hashPassword(password);
+				// Firestore stores passwordHash same as local
+				if (hash !== user.passwordHash) return {ok:false, message:'Invalid credentials'};
+				// Persist session locally so UI can read it (and optionally write session doc to Firestore)
+				try { write('lh_currentUser', {username: user.username, name: user.name}); } catch(e){}
+				updateSigninButtons();
+				// Optionally record a session document
+				try { await window.FB.add('sessions', { username: user.username, createdAt: new Date().toISOString() }); } catch(e){}
+				return {ok:true, user};
+			}
+
+			// Fallback to localStorage auth
+			const user = findUserByUsername(username);
+			if (!user) return {ok:false, message:'No such user'};
+			const hash = await hashPassword(password);
+			if (hash !== user.passwordHash) return {ok:false, message:'Invalid credentials'};
+			write('lh_currentUser', {username: user.username, name: user.name});
+			updateSigninButtons();
+			return {ok:true, user};
 	}
 
 	function currentUser() { return read('lh_currentUser', null); }
@@ -54,6 +86,11 @@
 	// Tasks
 	function allTasks() { return read('lh_tasks', []); }
 	function saveTasks(tasks) { write('lh_tasks', tasks); }
+
+	function isFirestoreReady() {
+		return window.__FB_READY__ && window.FB && window.FB.available;
+	}
+
 	function addTask(task) {
 		const tasks = allTasks();
 		task.id = Date.now();
@@ -61,15 +98,46 @@
 		task.applications = [];
 		tasks.unshift(task);
 		saveTasks(tasks);
+		// Sync to Firestore in background when available
+		if (isFirestoreReady()) {
+			(async function () {
+				try {
+					// Add localId for mapping
+					const payload = Object.assign({}, task, { localId: task.id });
+					await window.FB.add('lh_tasks', payload);
+				} catch (e) { console.error('Failed to sync task to Firestore', e); }
+			})();
+		}
 		return task;
 	}
 	function updateTask(updated) {
 		const tasks = allTasks().map(t => t.id === updated.id ? updated : t);
 		saveTasks(tasks);
+		if (isFirestoreReady()) {
+			(async function () {
+				try {
+					// try find remote by localId
+					const rem = await window.FB.queryEqual('lh_tasks', 'localId', updated.id);
+					if (rem && rem.length > 0) {
+						await window.FB.set('lh_tasks', rem[0]._id, Object.assign({}, updated, { localId: updated.id }));
+					} else {
+						await window.FB.add('lh_tasks', Object.assign({}, updated, { localId: updated.id }));
+					}
+				} catch (e) { console.error('Failed to update task in Firestore', e); }
+			})();
+		}
 	}
 	function removeTask(id) {
 		const tasks = allTasks().filter(t => t.id !== id);
 		saveTasks(tasks);
+		if (isFirestoreReady()) {
+			(async function () {
+				try {
+					const rem = await window.FB.queryEqual('lh_tasks', 'localId', id);
+					if (rem && rem.length>0) await window.FB.delete('lh_tasks', rem[0]._id);
+				} catch (e) { console.error('Failed to remove task from Firestore', e); }
+			})();
+		}
 	}
 
 	// Applications
@@ -81,12 +149,26 @@
 		app.taskId = Number(app.taskId); // Ensure taskId is a number
 		app.createdAt = new Date().toISOString();
 		apps.push(app); saveApplications(apps);
+		if (isFirestoreReady()) {
+			(async function(){
+				try { await window.FB.add('lh_applications', Object.assign({}, app, { localId: app.id })); } catch(e){ console.error('Failed to sync application to Firestore', e); }
+			})();
+		}
 		return app;
 	}
 
 	function updateApplication(id, updates) {
 		const apps = allApplications().map(a => a.id === id ? Object.assign({}, a, updates) : a);
 		saveApplications(apps);
+		if (isFirestoreReady()) {
+			(async function(){
+				try {
+					const rem = await window.FB.queryEqual('lh_applications', 'localId', id);
+					if (rem && rem.length>0) await window.FB.set('lh_applications', rem[0]._id, Object.assign({}, updates, { localId: id }));
+					else await window.FB.add('lh_applications', Object.assign({}, updates, { localId: id }));
+				} catch(e){ console.error('Failed to sync application update to Firestore', e); }
+			})();
+		}
 		// if accepted, also mark task
 		if (updates.status === 'accepted') {
 			const app = apps.find(a => a.id === id);
@@ -119,7 +201,13 @@
 	function sendMessage(from, to, content) {
 		const msgs = allMessages();
 		const msg = {id: Date.now()+Math.floor(Math.random()*99), from, to, content, createdAt:new Date().toISOString()};
-		msgs.push(msg); saveMessages(msgs); return msg;
+		msgs.push(msg); saveMessages(msgs);
+		if (isFirestoreReady()) {
+			(async function(){
+				try { await window.FB.add('lh_messages', Object.assign({}, msg, { localId: msg.id })); } catch(e){ console.error('Failed to sync message to Firestore', e); }
+			})();
+		}
+		return msg;
 	}
 
 	// Payments (demo) - minimal records only
@@ -128,7 +216,13 @@
 	function createPayment(taskId, fromUser, toUser, amount) {
 		const payments = allPayments();
 		const p = {id: Date.now()+Math.floor(Math.random()*999), taskId, from:fromUser, to:toUser, amount, status:'completed', createdAt:new Date().toISOString()};
-		payments.push(p); savePayments(payments); return p;
+		payments.push(p); savePayments(payments);
+		if (isFirestoreReady()) {
+			(async function(){
+				try { await window.FB.add('lh_payments', Object.assign({}, p, { localId: p.id })); } catch(e){ console.error('Failed to sync payment to Firestore', e); }
+			})();
+		}
+		return p;
 	}
 
 	// User updates and permit system (demo)
@@ -361,6 +455,70 @@
 	// Bind
 	document.addEventListener('DOMContentLoaded', function () {
 		updateSigninButtons();
+
+		// If Firestore is available, migrate any locally-stored users and collections to Firestore
+		(async function migrateLocalDataToFirestore(){
+			try {
+				if (window.__FB_READY__ && window.FB && window.FB.available) {
+					// Collections to migrate: users, tasks, applications, messages, payments
+					const collections = [
+						{ key: 'lh_users', col: 'lh_users' },
+						{ key: 'lh_tasks', col: 'lh_tasks' },
+						{ key: 'lh_applications', col: 'lh_applications' },
+						{ key: 'lh_messages', col: 'lh_messages' },
+						{ key: 'lh_payments', col: 'lh_payments' }
+					];
+					for (const c of collections) {
+						try {
+							const local = read(c.key, []);
+							const remote = await window.FB.getAll(c.col);
+							const remoteLocalIds = (remote||[]).map(r => r.localId || r.id || r._id);
+							// If remote has items, prefer remote as source of truth
+							if (remote && remote.length>0) {
+								// map remote docs into local store format
+								const mapped = remote.map(r => {
+									const obj = Object.assign({}, r);
+									// normalize id field for tasks/applications/messages/payments
+									if (!obj.id) {
+										obj.id = obj.localId || (obj._id ? Number(obj._id) : obj._id) || Date.now();
+									}
+									return obj;
+								});
+								write(c.key, mapped);
+							} else {
+								// remote empty: push local items to Firestore
+								for (const item of (local||[])) {
+									const localId = item.id || item.localId || (Date.now()+Math.floor(Math.random()*999));
+									if (!remoteLocalIds.includes(localId)) {
+										try { await window.FB.add(c.col, Object.assign({}, item, { localId })); } catch(e) { /* ignore */ }
+									}
+								}
+							}
+						} catch(e) { console.warn('Migration error for', c.key, e); }
+					}
+				}
+			} catch(e) { console.warn('Local -> Firestore migration failed', e); }
+			// Refresh UI after migration
+			try { rerenderAll(); updateSigninButtons(); } catch(e) {}
+		})();
+
+		// If Firestore is available, migrate any locally-stored users to Firestore
+		(async function migrateLocalUsersToFirestore(){
+			try {
+				if (window.__FB_READY__ && window.FB && window.FB.available) {
+					const localUsers = allUsers();
+					if (localUsers && localUsers.length>0) {
+						const remote = await window.FB.getAll('lh_users');
+						const remoteUsernames = (remote||[]).map(u=>u.username);
+						for (const u of localUsers) {
+							if (!remoteUsernames.includes(u.username)) {
+								try { await window.FB.add('lh_users', u); } catch(e) { /* ignore individual failures */ }
+							}
+						}
+					}
+				}
+			} catch(e) { console.warn('User migration to Firestore failed', e); }
+		})();
 
 		const search = document.getElementById('searchInput'); if (search) search.addEventListener('input', function () { rerenderAll(); });
 		const cat = document.getElementById('categoryFilter'); if (cat) cat.addEventListener('change', function(){ rerenderAll(); });
