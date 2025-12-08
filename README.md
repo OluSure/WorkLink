@@ -22,5 +22,6 @@ WorkLink addresses the growing need for flexible work arrangements by bridging t
 - **Frontend:** HTML5, CSS3, JavaScript
 - **Backend:** Firebase
 - **Authentication:** Firebase OAuth2 integration
+- **Payment Setup:** Paystack
 - **Deployment:** Vercel 
 
