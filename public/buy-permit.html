@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>About Us - WorkLink</title>
     <link href="assets/css/theme.css" rel="stylesheet" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://cdn-icons-png.flaticon.com/128/3665/3665996.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://cdn-icons-png.flaticon.com/128/3665/3665996.png">
+<link rel="icon" type="image/png" sizes="16x16" href="https://cdn-icons-png.flaticon.com/128/3665/3665996.png">
+
   </head>
   <body>
        <!-- ===============================================-->
@@ -18,7 +22,7 @@
         <div class="container">
           <a
             class="navbar-brand d-flex align-items-center fw-bolder fs-2 fst-italic"
-            href="/"
+            href="index.html"
           >
             <div class="text-info">Work</div>
             <div class="text-warning">Link</div>
@@ -119,68 +123,70 @@
           document.getElementById("buyBtn").disabled = true;
           return;
         }
-        const user = window.LH.findUserByUsername(cur.username) || {};
-        const freeUsed = user.freePermitUsed ? "Yes" : "No";
-        const purchased = user.permits || 0;
-        statusEl.innerHTML =
-          "<p>Signed in as <strong>" +
-          cur.username +
-          "</strong></p><p>Free permit used: <strong>" +
-          freeUsed +
-          "</strong></p><p>Purchased permits: <strong>" +
-          purchased +
-          "</strong></p>";
-        document
-          .getElementById("buyBtn")
-          .addEventListener("click", async function () {
-            const count =
-              Number(document.getElementById("permitCount").value) || 1;
-            const amount = 100 * count;
-            const buyBtn = document.getElementById("buyBtn");
-            
-            // Disable button during payment
-            buyBtn.disabled = true;
-            buyBtn.textContent = 'Processing...';
-            
-            try {
-              // Initiate Paystack payment
-              const email = cur.email || cur.username + '@worklink.app';
+        (async function(){
+          const user = await window.LH.findUserByUsernameAsync(cur.username) || {};
+          const freeUsed = user.freePermitUsed ? "Yes" : "No";
+          const purchased = user.permits || 0;
+          statusEl.innerHTML =
+            "<p>Signed in as <strong>" +
+            cur.username +
+            "</strong></p><p>Free permit used: <strong>" +
+            freeUsed +
+            "</strong></p><p>Purchased permits: <strong>" +
+            purchased +
+            "</strong></p>";
+          document
+            .getElementById("buyBtn")
+            .addEventListener("click", async function () {
+              const count =
+                Number(document.getElementById("permitCount").value) || 1;
+              const amount = 100 * count;
+              const buyBtn = document.getElementById("buyBtn");
               
-              // Validate email format
-              if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+              // Disable button during payment
+              buyBtn.disabled = true;
+              buyBtn.textContent = 'Processing...';
+              
+              try {
+                // Initiate Paystack payment
+                const email = user.email || cur.email || cur.username + '@worklink.app';
+                
+                // Validate email format
+                if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+                  window.LH.showInfo(
+                    "Email Required",
+                    "Please update your profile with a valid email address to proceed with payment."
+                  );
+                  buyBtn.disabled = false;
+                  buyBtn.textContent = 'Buy';
+                  return;
+                }
+                
+                await window.initializePaystackPayment({
+                  email: email,
+                  amount: amount,
+                  username: cur.username,
+                  permitCount: count
+                });
+                
+                // Payment successful
                 window.LH.showInfo(
-                  "Email Required",
-                  "Please update your profile with a valid email address to proceed with payment."
-                );
+                  "Payment Successful",
+                  "You purchased " + count + " permit(s) for ₦" + amount
+                ).then(function () {
+                  window.location = "find.html";
+                });
+              } catch (err) {
+                console.error('Payment error:', err);
                 buyBtn.disabled = false;
                 buyBtn.textContent = 'Buy';
-                return;
+                window.LH.showInfo(
+                  "Payment Failed",
+                  err.message || "Payment could not be processed. Please try again."
+                );
               }
-              
-              await window.initializePaystackPayment({
-                email: email,
-                amount: amount,
-                username: cur.username,
-                permitCount: count
-              });
-              
-              // Payment successful
-              window.LH.showInfo(
-                "Payment Successful",
-                "You purchased " + count + " permit(s) for ₦" + amount
-              ).then(function () {
-                window.location = "find.html";
-              });
-            } catch (err) {
-              console.error('Payment error:', err);
-              buyBtn.disabled = false;
-              buyBtn.textContent = 'Buy';
-              window.LH.showInfo(
-                "Payment Failed",
-                err.message || "Payment could not be processed. Please try again."
-              );
-            }
-          });
+            });
+        })();
       })();
     </script>
 

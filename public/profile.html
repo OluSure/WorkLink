@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Profile - WorkLink</title>
     <link href="assets/css/theme.css" rel="stylesheet" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://cdn-icons-png.flaticon.com/128/3665/3665996.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://cdn-icons-png.flaticon.com/128/3665/3665996.png">
+<link rel="icon" type="image/png" sizes="16x16" href="https://cdn-icons-png.flaticon.com/128/3665/3665996.png">
+
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-light fixed-top py-3 backdrop">
@@ -36,145 +40,150 @@
           return new URLSearchParams(location.search).get(k);
         }
         const username = qs("u");
-        const user = window.LH.findUserByUsername(username);
-        const profile = document.getElementById("profileContainer");
-        if (!user) {
-          profile.innerHTML = "<p>User not found.</p>";
-          return;
-        }
-        profile.innerHTML =
-          '<div id="profileDetails">'
-            + "<h2>" + user.name + " (" + user.username + ")</h2>"
-            + '<p id="profileBio">' + (user.bio || "") + '</p>'
-            + (user.avatar ? '<img id="profileAvatar" src="' + user.avatar + '" style="max-width:200px">' : '')
-          + '</div>';
-
-        // If signed-in user is viewing their own profile, show Edit button
-        const curUser = window.LH.currentUser ? window.LH.currentUser() : null;
+        // Load user from Firestore first (async)
+        (async function loadProfile() {
+          const user = await window.LH.findUserByUsernameAsync(username);
+          const profile = document.getElementById("profileContainer");
+          if (!user) {
+            profile.innerHTML = "<p>User not found.</p>";
+            return;
+          }
+          profile.innerHTML =
+            '<div id="profileDetails">'
+              + "<h2>" + user.name + " (" + user.username + ")</h2>"
+              + '<p id="profileBio">' + (user.bio || "") + '</p>'
+              + (user.avatar ? '<img id="profileAvatar" src="' + user.avatar + '" style="max-width:200px">' : '')
+            + '</div>';
+          
+          // If signed-in user is viewing their own profile, show Edit button
+          const curUser = window.LH.currentUser ? window.LH.currentUser() : null;
         if (curUser && curUser.username === user.username) {
           const editBtn = document.createElement('button');
           editBtn.className = 'btn btn-outline-secondary mb-3';
           editBtn.textContent = 'Edit Profile';
           editBtn.id = 'editProfileBtn';
           profile.insertBefore(editBtn, profile.firstChild);
-        }
+          }
 
-        // Build Edit Profile modal 
-        function ensureEditModal() {
-          if (document.getElementById('editProfileModal')) return document.getElementById('editProfileModal');
-          const div = document.createElement('div');
-          div.innerHTML = `
-            <div class="modal fade" id="editProfileModal" tabindex="-1" aria-hidden="true">
-              <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                  <div class="modal-header"><h5 class="modal-title">Edit Profile</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-                  <div class="modal-body">
-                    <form id="editProfileForm">
-                      <div class="mb-2"><label class="form-label">Display name</label><input class="form-control" name="displayName" id="fldDisplayName"></div>
-                      <div class="mb-2"><label class="form-label">Email</label><input class="form-control" type="email" name="email" id="fldEmail"></div>
-                      <div class="mb-2"><label class="form-label">Phone</label><input class="form-control" name="phone" id="fldPhone"></div>
-                      <div class="mb-2"><label class="form-label">NIN</label><input class="form-control" name="nin" id="fldNIN"></div>
-                      <div class="mb-2"><label class="form-label">State</label><input class="form-control" name="state" id="fldState"></div>
-                      <div class="mb-2"><label class="form-label">Home address</label><input class="form-control" name="address" id="fldAddress"></div>
-                      <div class="mb-2"><label class="form-label">Bio</label><textarea class="form-control" name="bio" id="fldBio" rows="3"></textarea></div>
-                      <div class="mb-2"><label class="form-label">Avatar URL</label><input class="form-control" name="avatar" id="fldAvatar"></div>
-                      <div class="text-end"><button class="btn btn-primary" type="submit">Save</button></div>
-                    </form>
+          // Build Edit Profile modal 
+          function ensureEditModal() {
+            if (document.getElementById('editProfileModal')) return document.getElementById('editProfileModal');
+            const div = document.createElement('div');
+            div.innerHTML = `
+              <div class="modal fade" id="editProfileModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                  <div class="modal-content">
+                    <div class="modal-header"><h5 class="modal-title">Edit Profile</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                    <div class="modal-body">
+                      <form id="editProfileForm">
+                        <div class="mb-2"><label class="form-label">Display name</label><input class="form-control" name="displayName" id="fldDisplayName"></div>
+                        <div class="mb-2"><label class="form-label">Email</label><input class="form-control" type="email" name="email" id="fldEmail"></div>
+                        <div class="mb-2"><label class="form-label">Phone</label><input class="form-control" name="phone" id="fldPhone"></div>
+                        <div class="mb-2"><label class="form-label">NIN</label><input class="form-control" name="nin" id="fldNIN"></div>
+                        <div class="mb-2"><label class="form-label">State</label><input class="form-control" name="state" id="fldState"></div>
+                        <div class="mb-2"><label class="form-label">Home address</label><input class="form-control" name="address" id="fldAddress"></div>
+                        <div class="mb-2"><label class="form-label">Bio</label><textarea class="form-control" name="bio" id="fldBio" rows="3"></textarea></div>
+                        <div class="mb-2"><label class="form-label">Avatar URL</label><input class="form-control" name="avatar" id="fldAvatar"></div>
+                        <div class="text-end"><button class="btn btn-primary" type="submit">Save</button></div>
+                      </form>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>`;
-          document.body.appendChild(div);
-          return document.getElementById('editProfileModal');
-        }
+              </div>`;
+            document.body.appendChild(div);
+            return document.getElementById('editProfileModal');
+          }
 
-        // Open modal when Edit button clicked
-        const editBtnEl = document.getElementById('editProfileBtn');
-        if (editBtnEl) {
-          editBtnEl.addEventListener('click', function () {
-            const modalEl = ensureEditModal();
-            // populate fields
-            document.getElementById('fldDisplayName').value = user.name || '';
-            document.getElementById('fldEmail').value = user.email || '';
-            document.getElementById('fldPhone').value = user.phone || '';
-            document.getElementById('fldNIN').value = user.nin || '';
-            document.getElementById('fldState').value = user.state || '';
-            document.getElementById('fldAddress').value = user.address || '';
-            document.getElementById('fldBio').value = user.bio || '';
-            document.getElementById('fldAvatar').value = user.avatar || '';
-            const m = new bootstrap.Modal(modalEl);
-            m.show();
-            // bind save
-            const form = document.getElementById('editProfileForm');
-            form.onsubmit = function (e) {
-              e.preventDefault();
-              try {
-                const updates = {
-                  username: user.username,
-                  name: document.getElementById('fldDisplayName').value || user.name,
-                  email: document.getElementById('fldEmail').value || user.email,
-                  phone: document.getElementById('fldPhone').value || user.phone,
-                  nin: document.getElementById('fldNIN').value || user.nin,
-                  state: document.getElementById('fldState').value || user.state,
-                  address: document.getElementById('fldAddress').value || user.address,
-                  bio: document.getElementById('fldBio').value || user.bio,
-                  avatar: document.getElementById('fldAvatar').value || user.avatar
-                };
-                const saved = window.LH.updateUser(updates);
-                if (!saved) return window.LH.showInfo('Error', 'User not found');
-                m.hide();
-                window.LH.showInfo('Saved', 'Profile updated').then(function () { location.reload(); });
-              } catch (err) { console.error(err); window.LH.showInfo('Error','Unable to save profile'); }
-            };
-          });
-        }
-
-        // messages to/from this user
-        const inbox = document.getElementById("inboxContainer");
-        const msgs = window.LH.allMessages().filter(
-          (m) => m.to === user.username || m.from === user.username
-        );
-        inbox.innerHTML =
-          "<h4>Messages (" +
-          msgs.length +
-          ")</h4>" +
-          (msgs
-            .map(
-              (m) =>
-                '<div class="card p-2 mb-2"><strong>' +
-                m.from +
-                "</strong> -> <strong>" +
-                m.to +
-                "</strong><div>" +
-                m.content +
-                '</div><small class="text-muted">' +
-                (window.LH.formatDate
-                  ? window.LH.formatDate(m.createdAt)
-                  : m.createdAt) +
-                "</small></div>"
-            )
-            .join("") || "<p>No messages.</p>");
-
-        // If signed in, provide a send form
-        const cur = window.LH.currentUser ? window.LH.currentUser() : null;
-        if (cur) {
-          inbox.innerHTML +=
-            '<hr><h5>Send message</h5><form id="pmForm"><div class="mb-2"><textarea class="form-control" id="pmText" rows="3" required></textarea></div><button class="btn btn-primary">Send</button></form>';
-          document
-            .getElementById("pmForm")
-            .addEventListener("submit", async function (e) {
-              e.preventDefault();
-              const content = document.getElementById("pmText").value;
-              await window.LH.sendMessage(cur.username, user.username, content);
-              await window.LH.showInfo("Message sent", "Your message was sent");
-              document.getElementById("pmText").value = "";
-              location.reload();
+          // Open modal when Edit button clicked
+          const editBtnEl = document.getElementById('editProfileBtn');
+          if (editBtnEl) {
+            editBtnEl.addEventListener('click', function () {
+              const modalEl = ensureEditModal();
+              // populate fields
+              document.getElementById('fldDisplayName').value = user.name || '';
+              document.getElementById('fldEmail').value = user.email || '';
+              document.getElementById('fldPhone').value = user.phone || '';
+              document.getElementById('fldNIN').value = user.nin || '';
+              document.getElementById('fldState').value = user.state || '';
+              document.getElementById('fldAddress').value = user.address || '';
+              document.getElementById('fldBio').value = user.bio || '';
+              document.getElementById('fldAvatar').value = user.avatar || '';
+              const m = new bootstrap.Modal(modalEl);
+              m.show();
+              // bind save
+              const form = document.getElementById('editProfileForm');
+              form.onsubmit = function (e) {
+                e.preventDefault();
+                try {
+                  const updates = {
+                    username: user.username,
+                    name: document.getElementById('fldDisplayName').value || user.name,
+                    email: document.getElementById('fldEmail').value || user.email,
+                    phone: document.getElementById('fldPhone').value || user.phone,
+                    nin: document.getElementById('fldNIN').value || user.nin,
+                    state: document.getElementById('fldState').value || user.state,
+                    address: document.getElementById('fldAddress').value || user.address,
+                    bio: document.getElementById('fldBio').value || user.bio,
+                    avatar: document.getElementById('fldAvatar').value || user.avatar
+                  };
+                  const saved = window.LH.updateUser(updates);
+                  if (!saved) return window.LH.showInfo('Error', 'User not found');
+                  m.hide();
+                  window.LH.showInfo('Saved', 'Profile updated').then(function () { location.reload(); });
+                } catch (err) { console.error(err); window.LH.showInfo('Error','Unable to save profile'); }
+              };
             });
-        } else {
-          inbox.innerHTML += "<p>Please sign in to message this user.</p>";
-        }
-      })();
-    </script>
+          }
+
+          // messages to/from this user
+          const inbox = document.getElementById("inboxContainer");
+          const msgs = window.LH.allMessages().filter(
+            (m) => m.to === user.username || m.from === user.username
+          );
+          inbox.innerHTML =
+            "<h4>Messages (" +
+            msgs.length +
+            ")</h4>" +
+            (msgs
+              .map(
+                (m) =>
+                  '<div class="card p-2 mb-2"><strong>' +
+                  m.from +
+                  "</strong> -> <strong>" +
+                  m.to +
+                  "</strong><div>" +
+                  m.content +
+                  '</div><small class="text-muted">' +
+                  (window.LH.formatDate
+                    ? window.LH.formatDate(m.createdAt)
+                    : m.createdAt) +
+                  "</small></div>"
+              )
+              .join("") || "<p>No messages.</p>");
+
+          // If signed in, provide a send form
+          const cur = window.LH.currentUser ? window.LH.currentUser() : null;
+          if (cur) {
+            inbox.innerHTML +=
+              '<hr><h5>Send message</h5><form id="pmForm"><div class="mb-2"><textarea class="form-control" id="pmText" rows="3" required></textarea></div><button class="btn btn-primary">Send</button></form>';
+            document
+              .getElementById("pmForm")
+              .addEventListener("submit", async function (e) {
+                e.preventDefault();
+                const content = document.getElementById("pmText").value;
+                await window.LH.sendMessage(cur.username, user.username, content);
+                await window.LH.showInfo("Message sent", "Your message was sent");
+                document.getElementById("pmText").value = "";
+                location.reload();
+              });
+          } else {
+            inbox.innerHTML += "<p>Please sign in to message this user.</p>";
+          }
+        })();
+
+        // Build Edit Profile modal 
+    })();
+   </script>
       <section class="mt-7 py-0 bg-primary-gradient">
         <div class="bg-holder" style="background-image:url(assets/img/illustrations/footer-bg.png);background-position:center;background-size:cover;">
         </div>
