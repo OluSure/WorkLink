@@ -163,6 +163,8 @@
 	async function removeTask(id) {
 		const tasks = allTasksLocal().filter(t => t.id !== id);
 		saveTasks(tasks);
+		// Clear remote cache so next read fetches fresh data from Firestore
+		__CACHED_REMOTE_TASKS__ = null;
 		if (isFirestoreReady()) {
 			try {
 				const rem = await window.FB.queryEqual('lh_tasks', 'localId', id);
@@ -603,52 +605,6 @@
 			}, 100);
 		}
 
-		// If Firestore is available, migrate any locally-stored users and collections to Firestore
-		(async function migrateLocalDataToFirestore(){
-			try {
-				if (window.__FB_READY__ && window.FB && window.FB.available) {
-					// Collections to migrate: users, tasks, applications, messages, payments
-					const collections = [
-						{ key: 'lh_users', col: 'lh_users' },
-						{ key: 'lh_tasks', col: 'lh_tasks' },
-						{ key: 'lh_applications', col: 'lh_applications' },
-						{ key: 'lh_messages', col: 'lh_messages' },
-						{ key: 'lh_payments', col: 'lh_payments' }
-					];
-					for (const c of collections) {
-						try {
-							const local = read(c.key, []);
-							const remote = await window.FB.getAll(c.col);
-							const remoteLocalIds = (remote||[]).map(r => r.localId || r.id || r._id);
-							// If remote has items, prefer remote as source of truth
-							if (remote && remote.length>0) {
-								// map remote docs into local store format
-								const mapped = remote.map(r => {
-									const obj = Object.assign({}, r);
-									// normalize id field for tasks/applications/messages/payments
-									if (!obj.id) {
-										obj.id = obj.localId || (obj._id ? Number(obj._id) : obj._id) || Date.now();
-									}
-									return obj;
-								});
-								write(c.key, mapped);
-							} else {
-								// remote empty: push local items to Firestore
-								for (const item of (local||[])) {
-									const localId = item.id || item.localId || (Date.now()+Math.floor(Math.random()*999));
-									if (!remoteLocalIds.includes(localId)) {
-										try { await window.FB.add(c.col, Object.assign({}, item, { localId })); } catch(e) { /* ignore */ }
-									}
-								}
-							}
-						} catch(e) { console.warn('Migration error for', c.key, e); }
-					}
-				}
-			} catch(e) { console.warn('Local -> Firestore migration failed', e); }
-			// Refresh UI after migration
-			try { rerenderAll(); updateSigninButtons(); } catch(e) {}
-		})();
-
 		// If Firestore is available, migrate any locally-stored users to Firestore
 		(async function migrateLocalUsersToFirestore(){
 			try {
@@ -737,6 +693,7 @@
 		signOut: signOut,
 		allTasks: allTasks,
 		findUserByUsername: findUserByUsername,
+		findUserByUsernameAsync: findUserByUsernameAsync,
 		addApplication: addApplication,
 		allApplications: allApplications,
 		sendMessage: sendMessage,
@@ -758,4 +715,26 @@
 	window.LH.formatDate = formatDate;
 
 })();
+
+	async function findUserByUsernameAsync(username) {
+		// Wait briefly for Firestore to be ready (race-condition protection)
+		const waitForFB = async (timeoutMs = 3000) => {
+			const start = Date.now();
+			while (!(window.__FB_READY__ && window.FB && window.FB.available) && Date.now() - start < timeoutMs) {
+				await new Promise(r => setTimeout(r, 100));
+			}
+		};
+
+		try {
+			await waitForFB(3000);
+			if (isFirestoreReady()) {
+				try {
+					const results = await window.FB.queryEqual('lh_users', 'username', username);
+					if (results && results.length > 0) return results[0];
+				} catch (e) { console.warn('Failed to fetch user from Firestore', e); }
+			}
+		} catch (e) { /* ignore wait errors */ }
+		// Fallback to localStorage
+		return findUserByUsername(username);
+	}
 
