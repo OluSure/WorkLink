@@ -27,7 +27,13 @@
 	// Users
 	function allUsers() { return read('lh_users', []); }
 	function saveUsers(u) { write('lh_users', u); }
-	function findUserByUsername(username) { return allUsers().find(x => x.username === username); }
+	function findUserByUsername(username) {
+		if (!username && username !== 0) return null;
+		const want = String(username).toLowerCase();
+		return allUsers().find(x => x && x.username && String(x.username).toLowerCase() === want);
+	}
+
+	// Async helper — implemented below (uses Firestore when available)
 
 	async function createUser(username, password, displayName, email) {
 			if (!username || !password) return {ok:false, message:'Username and password required'};
@@ -290,6 +296,24 @@
 		if (idx === -1) return null;
 		users[idx] = Object.assign({}, users[idx], updated);
 		saveUsers(users);
+
+		// Try to sync user to Firestore in background when available
+		if (isFirestoreReady()) {
+			(async function syncUser() {
+				try {
+					const rem = await window.FB.queryEqual('lh_users', 'username', updated.username);
+					const payload = Object.assign({}, users[idx]);
+					if (rem && rem.length > 0) {
+						await window.FB.set('lh_users', rem[0]._id, payload);
+					} else {
+						await window.FB.add('lh_users', payload);
+					}
+				} catch (e) {
+					console.error('Failed to sync updated user to Firestore', e);
+				}
+			})();
+		}
+
 		return users[idx];
 	}
 
@@ -337,6 +361,22 @@
 		if ((users[idx].permits || 0) > 0) {
 			users[idx].permits = (users[idx].permits || 0) - 1;
 			saveUsers(users);
+			// sync permit decrement to Firestore when possible
+			if (isFirestoreReady()) {
+				(async function syncConsume() {
+					try {
+						const rem = await window.FB.queryEqual('lh_users', 'username', username);
+						const payload = Object.assign({}, users[idx]);
+						if (rem && rem.length > 0) {
+							await window.FB.set('lh_users', rem[0]._id, payload);
+						} else {
+							await window.FB.add('lh_users', payload);
+						}
+					} catch (e) {
+						console.error('Failed to sync consumed permit to Firestore', e);
+					}
+				})();
+			}
 			return true;
 		}
 		return false;
@@ -688,34 +728,8 @@
 	});
 
 	// show some functions for task/detail/profile pages
-	window.LH = {
-		currentUser: currentUser,
-		signOut: signOut,
-		allTasks: allTasks,
-		findUserByUsername: findUserByUsername,
-		findUserByUsernameAsync: findUserByUsernameAsync,
-		addApplication: addApplication,
-		allApplications: allApplications,
-		sendMessage: sendMessage,
-		allMessages: allMessages,
-		createPayment: createPayment,
-		allPayments: allPayments,
-		updateTask: updateTask,
-		updateUser: updateUser,
-		purchasePermit: purchasePermit,
-		hasPermit: hasPermit,
-		consumePermit: consumePermit,
-		applyToTask: applyToTask,
-		showInfo: showInfo,
-		showConfirm: showConfirm
-	};
 
-	// show updateApplication and formatDate
-	window.LH.updateApplication = updateApplication;
-	window.LH.formatDate = formatDate;
-
-})();
-
+	// Async helper — allows pages to use an async API (e.g. when integrating Firestore later)
 	async function findUserByUsernameAsync(username) {
 		// Wait briefly for Firestore to be ready (race-condition protection)
 		const waitForFB = async (timeoutMs = 3000) => {
@@ -737,4 +751,41 @@
 		// Fallback to localStorage
 		return findUserByUsername(username);
 	}
+
+	// show updateApplication and formatDate
+
+	// Build `window.LH` safely so a missing helper doesn't throw and stop script execution.
+	try {
+		const safe = {
+			currentUser: typeof currentUser === 'function' ? currentUser : function(){ return null; },
+			signOut: typeof signOut === 'function' ? signOut : function(){},
+			allTasks: typeof allTasks === 'function' ? allTasks : async function(){ return []; },
+			findUserByUsername: typeof findUserByUsername === 'function' ? findUserByUsername : function(u){ return null; },
+			findUserByUsernameAsync: typeof findUserByUsernameAsync === 'function' ? findUserByUsernameAsync : async function(u){ return findUserByUsername(u); },
+			addApplication: typeof addApplication === 'function' ? addApplication : async function(){},
+			allApplications: typeof allApplications === 'function' ? allApplications : async function(){ return []; },
+			sendMessage: typeof sendMessage === 'function' ? sendMessage : async function(){},
+			allMessages: typeof allMessages === 'function' ? allMessages : function(){ return []; },
+			createPayment: typeof createPayment === 'function' ? createPayment : async function(){},
+			allPayments: typeof allPayments === 'function' ? allPayments : function(){ return []; },
+			updateTask: typeof updateTask === 'function' ? updateTask : async function(){},
+			updateUser: typeof updateUser === 'function' ? updateUser : function(){ return null; },
+			purchasePermit: typeof purchasePermit === 'function' ? purchasePermit : async function(){},
+			hasPermit: typeof hasPermit === 'function' ? hasPermit : function(){ return false; },
+			consumePermit: typeof consumePermit === 'function' ? consumePermit : function(){ return false; },
+			applyToTask: typeof applyToTask === 'function' ? applyToTask : async function(){ return {ok:false}; },
+			showInfo: typeof showInfo === 'function' ? showInfo : async function(title, msg){ alert(title+" - "+msg); },
+			showConfirm: typeof showConfirm === 'function' ? showConfirm : function(title, cb){ if (confirm(title)) cb(); }
+		};
+		window.LH = safe;
+		// attach a couple of helpers separately
+		if (typeof updateApplication === 'function') window.LH.updateApplication = updateApplication;
+		if (typeof formatDate === 'function') window.LH.formatDate = formatDate;
+	} catch (e) {
+		console.error('Failed to initialize LH API safely', e);
+		// Last-resort fallback
+		window.LH = window.LH || {};
+	}
+
+})();
 
