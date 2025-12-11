@@ -149,7 +149,7 @@
               
               try {
                 // Initiate Paystack payment
-                const email = user.email || cur.email || cur.username + '@worklink.app';
+                const email = cur.username + '@worklink.app';
                 
                 // Validate email format
                 if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
