@@ -60,30 +60,32 @@
 	}
 
 	async function signInUser(username, password) {
-			// If Firestore available, try to authenticate against server copy
-			if (window.__FB_READY__ && window.FB && window.FB.available) {
+			// Must authenticate against Firestore only. Wait for Firestore readiness.
+			const waitForFB = async (timeoutMs = 5000) => {
+				const start = Date.now();
+				while (!isFirestoreReady() && Date.now() - start < timeoutMs) {
+					await new Promise(r => setTimeout(r, 100));
+				}
+				return isFirestoreReady();
+			};
+
+			const ready = await waitForFB(5000);
+			if (!ready) return {ok:false, message:'Sign-in requires server connection; try again later.'};
+
+			try {
 				const users = await window.FB.queryEqual('lh_users', 'username', username);
 				const user = (users && users.length>0) ? users[0] : null;
 				if (!user) return {ok:false, message:'No such user'};
 				const hash = await hashPassword(password);
-				// Firestore stores passwordHash same as local
 				if (hash !== user.passwordHash) return {ok:false, message:'Invalid credentials'};
-				// Persist session locally so UI can read it (and optionally write session doc to Firestore)
 				try { write('lh_currentUser', {username: user.username, name: user.name}); } catch(e){}
 				updateSigninButtons();
-				// Optionally record a session document
 				try { await window.FB.add('sessions', { username: user.username, createdAt: new Date().toISOString() }); } catch(e){}
 				return {ok:true, user};
+			} catch (e) {
+				console.error('Firestore sign-in error', e);
+				return {ok:false, message:'Sign-in failed due to server error'};
 			}
-
-			// Fallback to localStorage auth
-			const user = findUserByUsername(username);
-			if (!user) return {ok:false, message:'No such user'};
-			const hash = await hashPassword(password);
-			if (hash !== user.passwordHash) return {ok:false, message:'Invalid credentials'};
-			write('lh_currentUser', {username: user.username, name: user.name});
-			updateSigninButtons();
-			return {ok:true, user};
 	}
 
 	function currentUser() { return read('lh_currentUser', null); }
